@@ -1,4 +1,7 @@
 node_modules/
 backend/storage/vault/
+backend/storage/vault/*
 *.db
+*.db-shm
+*.db-wal
 .env
