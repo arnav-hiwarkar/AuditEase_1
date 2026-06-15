@@ -92,8 +92,10 @@
     // ── Wire auth UI (must happen AFTER topbar HTML is in the DOM) ─────────
     // initAuthUI() is defined in auth.js and handles: loading current user,
     // rendering account panel content, and wiring the account button click.
+    console.log('[AuditEase] Topbar injected. account-panel found:', !!document.getElementById('account-panel'));
+
     if (typeof window.AE.initAuthUI === 'function') {
-      window.AE.initAuthUI();
+      return window.AE.initAuthUI();
     }
   }
 

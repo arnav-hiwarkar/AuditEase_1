@@ -158,11 +158,7 @@
       if (res.ok) {
         setToken(data.token);
         currentUser = data.user;
-        updateAccountBtn(currentUser);
-        closeAccountPanel();
-        renderAccountPanel(currentUser);
-        // Refresh page data
-        if (typeof window.onAuthChange === 'function') window.onAuthChange(currentUser);
+        updateAccountUI(currentUser);
       } else {
         errEl.textContent = data.error || 'Login failed';
         btn.disabled = false;
@@ -181,26 +177,55 @@
     } catch (e) { /* silent */ }
     clearToken();
     currentUser = null;
-    updateAccountBtn(null);
-    closeAccountPanel();
-    renderAccountPanel(null);
-    if (typeof window.onAuthChange === 'function') window.onAuthChange(null);
+    updateAccountUI(null);
   }
 
   // ── Panel visibility ─────────────────────────────────────────────────
   function openAccountPanel() {
     const panel = document.getElementById('account-panel');
-    if (panel) panel.classList.remove('hidden');
+    if (!panel) {
+      console.error('[AuditEase] openAccountPanel: #account-panel not found in DOM');
+      return;
+    }
+
+    // Force show using inline style — overrides any CSS class hiding
+    panel.style.setProperty('display', 'block', 'important');
+    panel.style.setProperty('visibility', 'visible', 'important');
+    panel.style.setProperty('opacity', '1', 'important');
+    panel.style.setProperty('z-index', '9999', 'important');
+
+    // Also remove any hiding classes just in case
+    panel.classList.remove('hidden');
+    panel.classList.add('visible');
+
+    // Focus username input for immediate typing
+    setTimeout(() => {
+      const input = document.getElementById('login-username');
+      if (input) input.focus();
+    }, 50);
+
+    console.log('[AuditEase] Account panel opened');
   }
 
   function closeAccountPanel() {
     const panel = document.getElementById('account-panel');
-    if (panel) panel.classList.add('hidden');
+    if (!panel) return;
+    panel.style.removeProperty('display');
+    panel.style.removeProperty('visibility');
+    panel.style.removeProperty('opacity');
+    panel.classList.add('hidden');
+    panel.classList.remove('visible');
   }
 
   function toggleAccountPanel() {
     const panel = document.getElementById('account-panel');
-    if (panel) panel.classList.toggle('hidden');
+    if (panel) {
+      if (panel.classList.contains('hidden') || panel.style.display === 'none') {
+        openAccountPanel();
+      } else {
+        closeAccountPanel();
+      }
+    }
   }
 
   // ── Escape helper ────────────────────────────────────────────────────
@@ -212,20 +237,100 @@
 
   // ── Auth guard (for protected pages) ────────────────────────────────
   function showAuthGuard() {
-    const guard = document.createElement('div');
-    guard.className = 'auth-guard';
-    guard.innerHTML = `
-      <div class="auth-guard-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
+    // Dim the page content
+    const contentBody = document.querySelector('.page-body') 
+      || document.getElementById('dashboard-body')
+      || document.getElementById('vault-body')
+      || document.getElementById('archives-body');
+
+    if (contentBody) {
+      contentBody.style.filter = 'blur(4px)';
+      contentBody.style.pointerEvents = 'none';
+    }
+
+    // Remove existing overlay if any
+    const existing = document.getElementById('auth-guard-overlay');
+    if (existing) existing.remove();
+
+    let pageName = 'the dashboard';
+    if (window.location.pathname.includes('vault')) {
+      pageName = 'the document vault';
+    } else if (window.location.pathname.includes('archives')) {
+      pageName = 'the archives';
+    }
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'auth-guard-overlay';
+    overlay.innerHTML = `
+      <div id="auth-guard-box">
+        <div id="auth-guard-icon">🔒</div>
+        <h2 id="auth-guard-title">Sign in to continue</h2>
+        <p id="auth-guard-subtitle">You need to be signed in to view ${pageName}.</p>
+        <button type="button" id="auth-guard-signin-btn">Sign In</button>
       </div>
-      <h2>Authentication Required</h2>
-      <p>Please sign in to access this page.</p>
-      <button class="btn btn-primary" onclick="document.getElementById('account-btn').click()">Sign In</button>
     `;
-    document.body.appendChild(guard);
+    document.body.appendChild(overlay);
+
+    // Attach button listener — with safety check for topbar panel and debugging logs
+    const guardBtn = document.getElementById('auth-guard-signin-btn');
+    if (guardBtn) {
+      guardBtn.addEventListener('click', () => {
+        console.log('[AuditEase] Auth guard Sign In button clicked');
+        console.log('[AuditEase] account-panel in DOM:', !!document.getElementById('account-panel'));
+        const panel = document.getElementById('account-panel');
+        if (panel) {
+          openAccountPanel();
+        } else {
+          // Topbar not ready yet — wait and retry once
+          console.warn('[AuditEase] account-panel not in DOM yet, retrying in 300ms');
+          setTimeout(() => {
+            const retryPanel = document.getElementById('account-panel');
+            if (retryPanel) {
+              openAccountPanel();
+            } else {
+              console.error('[AuditEase] account-panel still not found. Check topbar is loaded on this page.');
+            }
+          }, 300);
+        }
+      });
+    } else {
+      console.error('[AuditEase] auth-guard-signin-btn not found after overlay injection');
+    }
+  }
+
+  // ── updateAccountUI ──────────────────────────────────────────────────
+  function updateAccountUI(user, skipGuard = false) {
+    updateAccountBtn(user);
+    closeAccountPanel();
+    renderAccountPanel(user);
+
+    if (user) {
+      // Remove auth guard overlay if present
+      const overlay = document.getElementById('auth-guard-overlay');
+      if (overlay) overlay.remove();
+
+      // Restore blurred content
+      const contentBody = document.querySelector('.page-body') 
+        || document.getElementById('dashboard-body')
+        || document.getElementById('vault-body')
+        || document.getElementById('archives-body');
+
+      if (contentBody) {
+        contentBody.style.filter = '';
+        contentBody.style.pointerEvents = '';
+      }
+    } else {
+      // Show auth guard if page is protected and we don't want to skip it
+      const isProtected = document.body.dataset.protected === 'true';
+      if (isProtected && !skipGuard) {
+        showAuthGuard();
+      }
+    }
+
+    if (typeof window.onAuthChange === 'function') {
+      window.onAuthChange(user);
+    }
   }
 
   // ── initAuthUI — called by topbar.js AFTER topbar HTML is injected ──────
@@ -246,7 +351,7 @@
     document.addEventListener('click', (e) => {
       const panel = document.getElementById('account-panel');
       const btn = document.getElementById('account-btn');
-      if (panel && !panel.classList.contains('hidden')) {
+      if (panel && (!panel.classList.contains('hidden') || panel.style.display !== 'none')) {
         if (!panel.contains(e.target) && e.target !== btn) {
           closeAccountPanel();
         }
@@ -254,14 +359,7 @@
     });
 
     const user = await loadCurrentUser();
-    updateAccountBtn(user);
-    renderAccountPanel(user);
-
-    // Show auth guard on protected pages
-    const isProtected = document.body.dataset.protected === 'true';
-    if (isProtected && !user) {
-      showAuthGuard();
-    }
+    updateAccountUI(user, true);
   }
 
   // ── Exports ───────────────────────────────────────────────────────────
@@ -273,4 +371,8 @@
   window.AE.updateAccountBtn = updateAccountBtn;
   window.AE.renderAccountPanel = renderAccountPanel;
   window.AE.initAuthUI = initAuthUI;  // Called by topbar.js after HTML injection
+  window.AE.openAccountPanel = openAccountPanel;
+  window.AE.closeAccountPanel = closeAccountPanel;
+  window.AE.showAuthGuard = showAuthGuard;
+  window.openAccountPanel = openAccountPanel;
 })();

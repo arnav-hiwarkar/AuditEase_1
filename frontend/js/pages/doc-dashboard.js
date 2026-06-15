@@ -42,45 +42,46 @@
   let allUsers = [];
   let activeSelection = { category: null, status: null };
 
-  // ── Init ─────────────────────────────────────────────────────────────
-  document.addEventListener('DOMContentLoaded', async () => {
-    window.AE.initTopbar({ showBack: true, backHref: '/index.html' });
-    window.AE.initSidebar(PAGE_KEY);
+  let dashboardInitialized = false;
 
-    currentUser = await window.AE.loadCurrentUser();
-    if (!currentUser) {
-      showAuthRequired();
+  async function initDashboard() {
+    if (dashboardInitialized) {
+      await Promise.all([loadSummary(), loadUsers()]);
+      renderCategoryCards();
       return;
     }
-
+    dashboardInitialized = true;
     window.AE.trackVisit(PAGE_KEY, PAGE_LABEL, PAGE_URL);
-    window.onAuthChange = handleAuthChange;
-
     await Promise.all([loadSummary(), loadUsers()]);
     renderCategoryCards();
     initUploadModal();
-  });
-
-  function showAuthRequired() {
-    const content = document.getElementById('dashboard-content');
-    if (content) {
-      content.innerHTML = `
-        <div class="empty-state" style="padding-top:80px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <p>Please sign in to view documents</p>
-          <button class="btn btn-primary" style="margin-top:16px;" onclick="document.getElementById('account-btn').click()">Sign In</button>
-        </div>
-      `;
-    }
   }
+
+  window.initDashboard = initDashboard;
+
+  // ── Init ─────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', async () => {
+    await window.AE.initTopbar({ showBack: true, backHref: '/index.html' });
+    window.AE.initSidebar(PAGE_KEY);
+
+    window.onAuthChange = handleAuthChange;
+
+    const token = window.AE.getToken();
+    currentUser = window.AE.getCurrentUser();
+
+    if (!token || !currentUser) {
+      window.AE.showAuthGuard();
+      return;
+    }
+
+    await initDashboard();
+  });
 
   async function handleAuthChange(user) {
     currentUser = user;
     if (user) {
-      await Promise.all([loadSummary(), loadUsers()]);
-      renderCategoryCards();
-    } else {
-      showAuthRequired();
+      window.AE.initSidebar(PAGE_KEY);
+      await initDashboard();
     }
   }
 

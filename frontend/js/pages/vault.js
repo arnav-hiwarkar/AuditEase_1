@@ -48,49 +48,55 @@
 
   let searchDebounce = null;
 
-  // ── Init ─────────────────────────────────────────────────────────────
-  document.addEventListener('DOMContentLoaded', async () => {
+  let vaultInitialized = false;
+
+  async function initVault() {
+    if (vaultInitialized) {
+      await fetchDocs();
+      renderTable();
+      return;
+    }
+    vaultInitialized = true;
     const pageKey = IS_ARCHIVES ? 'doc-archives' : PAGE_KEY;
     const pageLabel = IS_ARCHIVES ? 'Archives' : PAGE_LABEL;
     const pageUrl = IS_ARCHIVES ? '/documents/archives.html' : PAGE_URL;
 
-    window.AE.initTopbar({ showBack: true, backHref: '/index.html' });
+    window.AE.trackVisit(pageKey, pageLabel, pageUrl);
+    await loadUsers();
+    renderFilters();
+    await fetchDocs();
+    renderTable();
+  }
+
+  window.initVault = initVault;
+  window.initArchives = initVault;
+
+  // ── Init ─────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', async () => {
+    const pageKey = IS_ARCHIVES ? 'doc-archives' : PAGE_KEY;
+
+    await window.AE.initTopbar({ showBack: true, backHref: '/index.html' });
     window.AE.initSidebar(pageKey);
 
-    currentUser = await window.AE.loadCurrentUser();
-    window.AE.trackVisit(pageKey, pageLabel, pageUrl);
     window.onAuthChange = handleAuthChange;
 
-    if (currentUser) {
-      await loadUsers();
-      renderFilters();
-      await fetchDocs();
-      renderTable();
-    } else {
-      showAuthRequired();
-    }
-  });
+    const token = window.AE.getToken();
+    currentUser = window.AE.getCurrentUser();
 
-  function showAuthRequired() {
-    const list = document.getElementById('vault-list-body');
-    if (list) list.innerHTML = `
-      <div class="empty-state">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <p>Please sign in to view documents</p>
-        <button class="btn btn-primary" style="margin-top:12px;" onclick="document.getElementById('account-btn').click()">Sign In</button>
-      </div>
-    `;
-  }
+    if (!token || !currentUser) {
+      window.AE.showAuthGuard();
+      return;
+    }
+
+    await initVault();
+  });
 
   async function handleAuthChange(user) {
     currentUser = user;
     if (user) {
-      await loadUsers();
-      renderFilters();
-      await fetchDocs();
-      renderTable();
-    } else {
-      showAuthRequired();
+      const pageKey = IS_ARCHIVES ? 'doc-archives' : PAGE_KEY;
+      window.AE.initSidebar(pageKey);
+      await initVault();
     }
   }
 
