@@ -28,6 +28,9 @@ app.use(express.static(path.join(__dirname, '..', 'frontend')));
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentsRoutes);
 
+const auditRoutes = require('./routes/audit.routes');
+app.use('/api/audit', auditRoutes);
+
 // ── GET /api/users ───────────────────────────────────────────────────────────
 app.get('/api/users', requireAuth, (req, res) => {
   try {
