@@ -312,20 +312,22 @@
     const showBulkMapBtn = selectedLedgerIds.size > 0;
 
     panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
-        <h3 style="margin:0;font-size:15px;font-weight:600;color:var(--text-primary);">${panelTitle}</h3>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn btn-secondary btn-sm" id="btn-import-prev-mapping" style="padding:4px 8px;font-size:11px;">Import Previous Year Mapping</button>
-          ${showBulkMapBtn ? `<button class="btn btn-primary btn-sm" id="btn-bulk-map">Bulk Map (${selectedLedgerIds.size})</button>` : ''}
-          <div class="filter-chips">
-            <span class="filter-chip ${filterState === 'unmapped' && selectedSubgroupId === null ? 'active' : ''}" id="chip-unmapped">Unmapped</span>
-            <span class="filter-chip ${filterState === 'all' && selectedSubgroupId === null ? 'active' : ''}" id="chip-all">All</span>
-            <span class="filter-chip ${filterState === 'mapped' && selectedSubgroupId === null ? 'active' : ''}" id="chip-mapped">Mapped</span>
+      <div style="padding: 20px 20px 0 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+          <h3 style="margin:0;font-size:15px;font-weight:600;color:var(--text-primary);">${panelTitle}</h3>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-import-prev-mapping" style="padding:4px 8px;font-size:11px;">Import Previous Year Mapping</button>
+            ${showBulkMapBtn ? `<button class="btn btn-primary btn-sm" id="btn-bulk-map">Bulk Map (${selectedLedgerIds.size})</button>` : ''}
+            <div class="filter-chips">
+              <span class="filter-chip ${filterState === 'unmapped' && selectedSubgroupId === null ? 'active' : ''}" id="chip-unmapped">Unmapped</span>
+              <span class="filter-chip ${filterState === 'all' && selectedSubgroupId === null ? 'active' : ''}" id="chip-all">All</span>
+              <span class="filter-chip ${filterState === 'mapped' && selectedSubgroupId === null ? 'active' : ''}" id="chip-mapped">Mapped</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div style="overflow-x:auto;">
+      <div class="ledger-table-scroll-area">
         <table class="audit-table">
           <thead>
             <tr>

@@ -16,27 +16,27 @@
   <div id="sidebar-mount"></div>
   <main class="page-layout">
     <div class="page-content" id="main-content">
+      <div class="audit-page-content">
+        <div class="audit-page-header">
+          <h1>Audit Engagements</h1>
+          <a href="/audit/new.html" class="btn btn-primary" id="btn-new-engagement">+ New Engagement</a>
+        </div>
 
-      <div class="audit-page-header">
-        <h1>Audit Engagements</h1>
-        <a href="/audit/new.html" class="btn btn-primary" id="btn-new-engagement">+ New Engagement</a>
+        <div class="audit-filter-bar" id="filter-bar">
+          <input type="text" class="input" id="search-engagements" placeholder="Search engagements…" />
+          <select class="input" id="filter-status">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+            <option value="submitted">Submitted</option>
+            <option value="approved">Approved</option>
+          </select>
+        </div>
+
+        <div class="audit-cards-grid" id="engagements-grid">
+          <!-- Engagement cards populated by JS -->
+        </div>
       </div>
-
-      <div class="audit-filter-bar" id="filter-bar">
-        <input type="text" class="input" id="search-engagements" placeholder="Search engagements…" />
-        <select class="input" id="filter-status">
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="draft">Draft</option>
-          <option value="submitted">Submitted</option>
-          <option value="approved">Approved</option>
-        </select>
-      </div>
-
-      <div class="audit-cards-grid" id="engagements-grid">
-        <!-- Engagement cards populated by JS -->
-      </div>
-
     </div>
   </main>
   <script src="/js/auth.js"></script>
