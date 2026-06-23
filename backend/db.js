@@ -100,7 +100,7 @@ db.exec(`
     ie_pl_group_id INTEGER REFERENCES ie_pl_groups(id),
     is_mapped INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(engagement_id, ledger_code)
+    UNIQUE(engagement_id, ledger_code, ledger_name)
   );
 
   CREATE TABLE IF NOT EXISTS audit_entries (
@@ -155,5 +155,52 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// Migration: fix trial_balance_ledgers uniqueness constraint
+function migrateTrialBalanceUniqueness() {
+  const tableInfo = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='trial_balance_ledgers'
+  `).get();
+
+  if (tableInfo && tableInfo.sql.includes('UNIQUE(engagement_id, ledger_code)') 
+      && !tableInfo.sql.includes('UNIQUE(engagement_id, ledger_code, ledger_name)')) {
+    
+    console.log('[Migration] Fixing trial_balance_ledgers uniqueness constraint...');
+    
+    db.exec(`
+      BEGIN TRANSACTION;
+
+      CREATE TABLE trial_balance_ledgers_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+        ledger_code TEXT NOT NULL,
+        ledger_name TEXT NOT NULL,
+        opening_balance REAL NOT NULL DEFAULT 0,
+        debit_transactions REAL NOT NULL DEFAULT 0,
+        credit_transactions REAL NOT NULL DEFAULT 0,
+        closing_balance REAL NOT NULL DEFAULT 0,
+        ie_pl_group_id INTEGER REFERENCES ie_pl_groups(id),
+        is_mapped INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(engagement_id, ledger_code, ledger_name)
+      );
+
+      INSERT INTO trial_balance_ledgers_new 
+        SELECT id, engagement_id, ledger_code, ledger_name, opening_balance,
+               debit_transactions, credit_transactions, closing_balance,
+               ie_pl_group_id, is_mapped, created_at
+        FROM trial_balance_ledgers;
+
+      DROP TABLE trial_balance_ledgers;
+      ALTER TABLE trial_balance_ledgers_new RENAME TO trial_balance_ledgers;
+
+      COMMIT;
+    `);
+    
+    console.log('[Migration] trial_balance_ledgers uniqueness fixed.');
+  }
+}
+
+migrateTrialBalanceUniqueness();
 
 module.exports = db;

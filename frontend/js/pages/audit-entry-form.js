@@ -179,7 +179,7 @@
     if (hiddenInput.value) {
       const ledg = ledgers.find(l => l.id === parseInt(hiddenInput.value));
       if (ledg) {
-        input.value = `${ledg.ledger_code} - ${ledg.ledger_name}`;
+        input.value = `[${ledg.ledger_code}] ${ledg.ledger_name}`;
       }
     }
 
@@ -221,7 +221,7 @@
 
       optionsList.innerHTML = filtered.map(l => `
         <div class="searchable-select-option" data-id="${l.id}">
-          <span class="ledger-code">${window.AE.escapeHtml(l.ledger_code)}</span>
+          <span class="ledger-code">[${window.AE.escapeHtml(l.ledger_code)}]</span>
           <span class="ledger-name">${window.AE.escapeHtml(l.ledger_name)}</span>
         </div>
       `).join('');
@@ -231,7 +231,7 @@
           const id = opt.dataset.id;
           hiddenInput.value = id;
           const ledg = ledgers.find(l => l.id === parseInt(id));
-          input.value = ledg ? `${ledg.ledger_code} - ${ledg.ledger_name}` : '';
+          input.value = ledg ? `[${ledg.ledger_code}] ${ledg.ledger_name}` : '';
           dropdown.classList.remove('open');
           updateBalances();
         });

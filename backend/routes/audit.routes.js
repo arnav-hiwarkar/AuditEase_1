@@ -307,20 +307,21 @@ router.post('/:id/trial-balance/import', upload.single('file'), (req, res) => {
           (engagement_id, ledger_code, ledger_name, opening_balance, 
            debit_transactions, credit_transactions, closing_balance)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(engagement_id, ledger_code) DO UPDATE SET
-          ledger_name = excluded.ledger_name,
-          opening_balance = excluded.opening_balance,
-          debit_transactions = excluded.debit_transactions,
-          credit_transactions = excluded.credit_transactions,
-          closing_balance = excluded.closing_balance,
+        ON CONFLICT(engagement_id, ledger_code, ledger_name) DO UPDATE SET
+          opening_balance     = opening_balance + excluded.opening_balance,
+          debit_transactions  = debit_transactions + excluded.debit_transactions,
+          credit_transactions = credit_transactions + excluded.credit_transactions,
+          closing_balance     = closing_balance + excluded.closing_balance,
           is_mapped = 0,
           ie_pl_group_id = NULL
       `);
 
       let imported = 0;
+      let merged = 0; // count of rows that hit a true code+name collision and got summed
       let skippedBlank = 0;
       let skippedManual = 0;
       const errors = [];
+      const seenInThisImport = new Set(); // tracks code+name pairs seen so far in this same import batch
 
       rows.forEach((row, i) => {
         if (skipRowIndices.has(i)) { skippedManual++; return; }
@@ -328,11 +329,18 @@ router.post('/:id/trial-balance/import', upload.single('file'), (req, res) => {
         const code = String(row[columnMap.ledger_code] ?? '').trim();
         const name = String(row[columnMap.ledger_name] ?? '').trim();
 
-        // A row with no ledger code is treated as a group/subtotal/blank row — skip, don't error
         if (!code) { skippedBlank++; return; }
         if (!name) {
           errors.push(`Row with ledger code "${code}" has no ledger name — skipped`);
           return;
+        }
+
+        const dedupeKey = `${code}|||${name}`;
+        if (seenInThisImport.has(dedupeKey)) {
+          merged++;
+        } else {
+          seenInThisImport.add(dedupeKey);
+          imported++;
         }
 
         stmt.run(
@@ -342,10 +350,9 @@ router.post('/:id/trial-balance/import', upload.single('file'), (req, res) => {
           parseNum(row[columnMap.credit_transactions]),
           parseNum(row[columnMap.closing_balance])
         );
-        imported++;
       });
 
-      return { imported, skippedBlank, skippedManual, errors };
+      return { imported, merged, skippedBlank, skippedManual, errors };
     });
 
     const result = insertMany(dataRows);

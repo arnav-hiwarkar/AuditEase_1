@@ -113,7 +113,7 @@
         ledgers.forEach(l => {
           html += `
             <div class="fs-ledger-row">
-              <span>${window.AE.escapeHtml(l.ledger_code)} - ${window.AE.escapeHtml(l.ledger_name)}</span>
+              <span>[${window.AE.escapeHtml(l.ledger_code)}] ${window.AE.escapeHtml(l.ledger_name)}</span>
               <span class="fs-amount">${fmt(l.adjusted_closing)}</span>
             </div>
           `;

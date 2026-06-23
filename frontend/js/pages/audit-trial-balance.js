@@ -410,11 +410,20 @@
 
     let debitSum = 0;
     let creditSum = 0;
+    const codeNameCounts = {};
+    const codeOnlyCounts = {};
+
     allRows.forEach(row => {
       const code = String(row[map.ledger_code] ?? '').trim();
+      const name = String(row[map.ledger_name] ?? '').trim();
+
       if (code) { // Only count rows that will be imported
         debitSum += parseNum(row[map.debit_transactions]);
         creditSum += parseNum(row[map.credit_transactions]);
+
+        codeOnlyCounts[code] = (codeOnlyCounts[code] || 0) + 1;
+        const key = `${code}|||${name}`;
+        codeNameCounts[key] = (codeNameCounts[key] || 0) + 1;
       }
     });
 
@@ -435,6 +444,56 @@
             <span>✗</span> Unbalanced: Difference is ${diff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
           </div>
         `;
+      }
+    }
+
+    const dupNoticeContainer = document.getElementById('duplicate-notice-container');
+    if (dupNoticeContainer) {
+      dupNoticeContainer.innerHTML = '';
+
+      const codesReused = Object.entries(codeOnlyCounts)
+        .filter(([_, count]) => count > 1)
+        .map(([code, count]) => ({ code, count }));
+
+      const trueDuplicates = Object.entries(codeNameCounts)
+        .filter(([_, count]) => count > 1)
+        .map(([key, count]) => {
+          const [code, name] = key.split('|||');
+          return { code, name, count };
+        });
+
+      if (codesReused.length > 0) {
+        const notice = document.createElement('div');
+        notice.className = 'balance-check';
+        notice.style.background = 'rgba(59, 130, 246, 0.1)';
+        notice.style.color = 'var(--accent)';
+        notice.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+
+        const topCodes = codesReused
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5)
+          .map(d => `${d.code} (×${d.count})`)
+          .join(', ');
+
+        notice.innerHTML = `
+          ℹ️ ${codesReused.length} ledger codes are reused across multiple different accounts
+          (e.g. ${topCodes}). This is common in Tally exports and each will be imported as a 
+          separate ledger since the names differ.
+        `;
+        dupNoticeContainer.appendChild(notice);
+      }
+
+      if (trueDuplicates.length > 0) {
+        const notice = document.createElement('div');
+        notice.className = 'balance-check unbalanced';
+        const list = trueDuplicates
+          .map(d => `${d.code} — "${d.name}" (×${d.count})`)
+          .join('; ');
+        notice.innerHTML = `
+          ⚠ ${trueDuplicates.length} rows have the exact same ledger code AND name appearing 
+          more than once: ${list}. Their amounts will be summed together into a single ledger entry.
+        `;
+        dupNoticeContainer.appendChild(notice);
       }
     }
 
