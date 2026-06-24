@@ -5,3 +5,5 @@ backend/storage/vault/*
 *.db-shm
 *.db-wal
 .env
+joe
+

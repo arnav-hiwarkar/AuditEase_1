@@ -63,6 +63,144 @@ db.exec(`
     UNIQUE(user_id, page_key),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS audit_engagements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name TEXT NOT NULL,
+    financial_year TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Active',
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS ie_pl_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    ie_pl_type TEXT NOT NULL,
+    group_code TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    subgroup_code TEXT NOT NULL,
+    subgroup_name TEXT NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS trial_balance_ledgers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    ledger_code TEXT NOT NULL,
+    ledger_name TEXT NOT NULL,
+    opening_balance REAL NOT NULL DEFAULT 0,
+    debit_transactions REAL NOT NULL DEFAULT 0,
+    credit_transactions REAL NOT NULL DEFAULT 0,
+    closing_balance REAL NOT NULL DEFAULT 0,
+    ie_pl_group_id INTEGER REFERENCES ie_pl_groups(id),
+    is_mapped INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(engagement_id, ledger_code, ledger_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    entry_number TEXT NOT NULL,
+    entry_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    narration TEXT,
+    entry_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Draft',
+    submitted_by INTEGER REFERENCES users(id),
+    submitted_at TEXT,
+    reviewed_by INTEGER REFERENCES users(id),
+    reviewed_at TEXT,
+    rejection_reason TEXT,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_entry_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    audit_entry_id INTEGER NOT NULL REFERENCES audit_entries(id) ON DELETE CASCADE,
+    ledger_id INTEGER NOT NULL REFERENCES trial_balance_ledgers(id),
+    line_type TEXT NOT NULL,
+    amount REAL NOT NULL,
+    line_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS report_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    template_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS generated_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    template_id INTEGER REFERENCES report_templates(id),
+    report_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Draft',
+    generated_by INTEGER NOT NULL REFERENCES users(id),
+    approved_by INTEGER REFERENCES users(id),
+    approved_at TEXT,
+    stored_filename TEXT,
+    report_data_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+// Migration: fix trial_balance_ledgers uniqueness constraint
+function migrateTrialBalanceUniqueness() {
+  const tableInfo = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='trial_balance_ledgers'
+  `).get();
+
+  if (tableInfo && tableInfo.sql.includes('UNIQUE(engagement_id, ledger_code)') 
+      && !tableInfo.sql.includes('UNIQUE(engagement_id, ledger_code, ledger_name)')) {
+    
+    console.log('[Migration] Fixing trial_balance_ledgers uniqueness constraint...');
+    
+    db.exec(`
+      BEGIN TRANSACTION;
+
+      CREATE TABLE trial_balance_ledgers_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+        ledger_code TEXT NOT NULL,
+        ledger_name TEXT NOT NULL,
+        opening_balance REAL NOT NULL DEFAULT 0,
+        debit_transactions REAL NOT NULL DEFAULT 0,
+        credit_transactions REAL NOT NULL DEFAULT 0,
+        closing_balance REAL NOT NULL DEFAULT 0,
+        ie_pl_group_id INTEGER REFERENCES ie_pl_groups(id),
+        is_mapped INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(engagement_id, ledger_code, ledger_name)
+      );
+
+      INSERT INTO trial_balance_ledgers_new 
+        SELECT id, engagement_id, ledger_code, ledger_name, opening_balance,
+               debit_transactions, credit_transactions, closing_balance,
+               ie_pl_group_id, is_mapped, created_at
+        FROM trial_balance_ledgers;
+
+      DROP TABLE trial_balance_ledgers;
+      ALTER TABLE trial_balance_ledgers_new RENAME TO trial_balance_ledgers;
+
+      COMMIT;
+    `);
+    
+    console.log('[Migration] trial_balance_ledgers uniqueness fixed.');
+  }
+}
+
+migrateTrialBalanceUniqueness();
 
 module.exports = db;
