@@ -114,11 +114,26 @@ app.get('*', (req, res) => {
 });
 
 // ── Start server ─────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 AuditEase server running at http://localhost:${PORT}`);
   console.log(`   Network access: http://<your-local-ip>:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Database: auditease.db\n`);
 });
+
+// ── Graceful Shutdown ────────────────────────────────────────────────────────
+function gracefulShutdown(signal) {
+  console.log(`\n[${signal}] Shutting down gracefully...`);
+  server.close(() => {
+    console.log('HTTP server closed.');
+    // Close the database connection to merge WAL and remove -wal/-shm files
+    db.close();
+    console.log('Database connection closed.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 module.exports = app;
