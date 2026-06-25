@@ -31,6 +31,19 @@
       delete headers['Content-Type']; // Let browser set multipart boundary
     }
     const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      clearToken();
+      localStorage.removeItem('ae_user');
+      currentUser = null;
+      updateAccountUI(null);
+      
+      sessionStorage.setItem('ae_open_login', 'true');
+      if (window.location.pathname !== '/' && window.location.pathname !== '/index.html') {
+        window.location.href = '/index.html';
+      } else {
+        openAccountPanel();
+      }
+    }
     return res;
   }
 
@@ -297,6 +310,10 @@
   async function initAuthUI() {
     const user = await loadCurrentUser();
     updateAccountUI(user, true);
+    if (!user && sessionStorage.getItem('ae_open_login') === 'true') {
+      sessionStorage.removeItem('ae_open_login');
+      openAccountPanel();
+    }
   }
 
   // ── Exports ───────────────────────────────────────────────────────────
