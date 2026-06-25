@@ -155,6 +155,37 @@ db.exec(`
     report_data_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS engagement_auditors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+    assigned_by INTEGER NOT NULL REFERENCES users(id),
+    UNIQUE(engagement_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL REFERENCES audit_engagements(id) ON DELETE CASCADE,
+    raised_by INTEGER NOT NULL REFERENCES users(id),
+    query_type TEXT NOT NULL DEFAULT 'General',
+    subject TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'Open',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_query_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_id INTEGER NOT NULL REFERENCES audit_queries(id) ON DELETE CASCADE,
+    sent_by INTEGER NOT NULL REFERENCES users(id),
+    message TEXT,
+    stored_filename TEXT,
+    original_filename TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Migration: fix trial_balance_ledgers uniqueness constraint

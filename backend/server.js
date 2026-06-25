@@ -43,6 +43,17 @@ app.get('/api/users', requireAuth, (req, res) => {
   }
 });
 
+// ── GET /api/users/auditors ──────────────────────────────────────────────────────
+app.get('/api/users/auditors', requireAuth, (req, res) => {
+  try {
+    const auditors = db.prepare('SELECT id, name, username FROM users WHERE role = ? ORDER BY name ASC').all('auditor');
+    res.json(auditors);
+  } catch (err) {
+    console.error('Auditors list error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Page Visit Tracking ──────────────────────────────────────────────────────
 // POST /api/visits
 app.post('/api/visits', requireAuth, (req, res) => {

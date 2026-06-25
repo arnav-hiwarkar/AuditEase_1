@@ -1603,4 +1603,285 @@ router.post('/:id/report/generate', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENGAGEMENT AUDITORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/audit/engagements/:id/auditors
+router.get('/engagements/:id/auditors', (req, res) => {
+  try {
+    const engagement = db.prepare('SELECT id FROM audit_engagements WHERE id = ?').get(req.params.id);
+    if (!engagement) return res.status(404).json({ error: 'Engagement not found' });
+
+    const auditors = db.prepare(`
+      SELECT ea.id, ea.user_id, ea.assigned_at, u.name, u.username
+      FROM engagement_auditors ea
+      JOIN users u ON ea.user_id = u.id
+      WHERE ea.engagement_id = ?
+      ORDER BY u.name ASC
+    `).all(req.params.id);
+
+    res.json(auditors);
+  } catch (err) {
+    console.error('Get auditors error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/audit/engagements/:id/auditors
+// Body: { user_ids: [1, 2, 3] } — replaces all existing assignments
+router.post('/engagements/:id/auditors', (req, res) => {
+  try {
+    const engagement = db.prepare('SELECT id FROM audit_engagements WHERE id = ?').get(req.params.id);
+    if (!engagement) return res.status(404).json({ error: 'Engagement not found' });
+
+    const { user_ids } = req.body;
+    if (!Array.isArray(user_ids)) {
+      return res.status(400).json({ error: 'user_ids must be an array' });
+    }
+
+    const now = new Date().toISOString();
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM engagement_auditors WHERE engagement_id = ?').run(req.params.id);
+      const insert = db.prepare(
+        'INSERT OR IGNORE INTO engagement_auditors (engagement_id, user_id, assigned_at, assigned_by) VALUES (?, ?, ?, ?)'
+      );
+      for (const uid of user_ids) {
+        insert.run(req.params.id, uid, now, req.user.id);
+      }
+    });
+    tx();
+
+    const updated = db.prepare(`
+      SELECT ea.id, ea.user_id, ea.assigned_at, u.name, u.username
+      FROM engagement_auditors ea
+      JOIN users u ON ea.user_id = u.id
+      WHERE ea.engagement_id = ?
+      ORDER BY u.name ASC
+    `).all(req.params.id);
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Set auditors error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/audit/engagements/:id/auditors/:uid
+router.delete('/engagements/:id/auditors/:uid', (req, res) => {
+  try {
+    db.prepare('DELETE FROM engagement_auditors WHERE engagement_id = ? AND user_id = ?')
+      .run(req.params.id, req.params.uid);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Remove auditor error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT QUERIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_QUERY_TYPES = ['General', 'Document Request', 'Clarification', 'Observation'];
+
+// GET /api/audit/:id/queries
+router.get('/:id/queries', (req, res) => {
+  try {
+    const engagement = db.prepare('SELECT id FROM audit_engagements WHERE id = ?').get(req.params.id);
+    if (!engagement) return res.status(404).json({ error: 'Engagement not found' });
+
+    const queries = db.prepare(`
+      SELECT q.*,
+             u.name AS raised_by_name,
+             (SELECT COUNT(*) FROM audit_query_replies WHERE query_id = q.id) AS reply_count,
+             (SELECT MAX(created_at) FROM audit_query_replies WHERE query_id = q.id) AS last_reply_at
+      FROM audit_queries q
+      JOIN users u ON q.raised_by = u.id
+      WHERE q.engagement_id = ?
+      ORDER BY q.updated_at DESC
+    `).all(req.params.id);
+
+    res.json(queries);
+  } catch (err) {
+    console.error('Queries list error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/audit/:id/queries
+router.post('/:id/queries', (req, res) => {
+  try {
+    const engagement = db.prepare('SELECT id FROM audit_engagements WHERE id = ?').get(req.params.id);
+    if (!engagement) return res.status(404).json({ error: 'Engagement not found' });
+
+    const { query_type, subject, description } = req.body;
+
+    if (!subject || !subject.trim()) {
+      return res.status(400).json({ error: 'Subject is required' });
+    }
+    if (query_type && !VALID_QUERY_TYPES.includes(query_type)) {
+      return res.status(400).json({ error: `Invalid query_type. Must be one of: ${VALID_QUERY_TYPES.join(', ')}` });
+    }
+
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      INSERT INTO audit_queries (engagement_id, raised_by, query_type, subject, description, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'Open', ?, ?)
+    `).run(req.params.id, req.user.id, query_type || 'General', subject.trim(), description || null, now, now);
+
+    const query = db.prepare(`
+      SELECT q.*, u.name AS raised_by_name
+      FROM audit_queries q
+      JOIN users u ON q.raised_by = u.id
+      WHERE q.id = ?
+    `).get(result.lastInsertRowid);
+
+    res.status(201).json(query);
+  } catch (err) {
+    console.error('Query create error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/audit/:id/queries/:qid
+router.get('/:id/queries/:qid', (req, res) => {
+  try {
+    const query = db.prepare(`
+      SELECT q.*, u.name AS raised_by_name
+      FROM audit_queries q
+      JOIN users u ON q.raised_by = u.id
+      WHERE q.id = ? AND q.engagement_id = ?
+    `).get(req.params.qid, req.params.id);
+
+    if (!query) return res.status(404).json({ error: 'Query not found' });
+
+    const replies = db.prepare(`
+      SELECT r.*, u.name AS sent_by_name, u.role AS sent_by_role
+      FROM audit_query_replies r
+      JOIN users u ON r.sent_by = u.id
+      WHERE r.query_id = ?
+      ORDER BY r.created_at ASC
+    `).all(req.params.qid);
+
+    for (const reply of replies) {
+      if (reply.stored_filename) {
+        reply.download_url = `/api/audit/${req.params.id}/queries/${req.params.qid}/replies/${reply.id}/download`;
+      }
+    }
+
+    res.json({ ...query, replies });
+  } catch (err) {
+    console.error('Query get error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/audit/:id/queries/:qid/replies  (multipart)
+router.post('/:id/queries/:qid/replies', upload.single('file'), (req, res) => {
+  try {
+    const query = db.prepare('SELECT * FROM audit_queries WHERE id = ? AND engagement_id = ?').get(req.params.qid, req.params.id);
+    if (!query) return res.status(404).json({ error: 'Query not found' });
+
+    const message = (req.body.message || '').trim() || null;
+    let storedFilename = null;
+    let originalFilename = null;
+
+    if (!message && !req.file) {
+      return res.status(400).json({ error: 'Reply must have a message or attachment' });
+    }
+
+    if (req.file) {
+      const uuid = crypto.randomUUID();
+      storedFilename = `query_reply_${req.params.qid}_${uuid}.enc`;
+      originalFilename = req.file.originalname;
+      const encrypted = encryptFile(req.file.buffer);
+      if (!fs.existsSync(VAULT_PATH)) fs.mkdirSync(VAULT_PATH, { recursive: true });
+      fs.writeFileSync(path.join(VAULT_PATH, storedFilename), encrypted);
+    }
+
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      INSERT INTO audit_query_replies (query_id, sent_by, message, stored_filename, original_filename, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.params.qid, req.user.id, message, storedFilename, originalFilename, now);
+
+    db.prepare("UPDATE audit_queries SET updated_at = ? WHERE id = ?").run(now, req.params.qid);
+
+    const reply = db.prepare(`
+      SELECT r.*, u.name AS sent_by_name, u.role AS sent_by_role
+      FROM audit_query_replies r
+      JOIN users u ON r.sent_by = u.id
+      WHERE r.id = ?
+    `).get(result.lastInsertRowid);
+
+    if (reply.stored_filename) {
+      reply.download_url = `/api/audit/${req.params.id}/queries/${req.params.qid}/replies/${reply.id}/download`;
+    }
+
+    res.status(201).json(reply);
+  } catch (err) {
+    console.error('Reply create error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/audit/:id/queries/:qid/resolve
+router.patch('/:id/queries/:qid/resolve', (req, res) => {
+  try {
+    if (req.user.role !== 'auditor') {
+      return res.status(403).json({ error: 'Only auditors can resolve queries' });
+    }
+    const query = db.prepare('SELECT * FROM audit_queries WHERE id = ? AND engagement_id = ?').get(req.params.qid, req.params.id);
+    if (!query) return res.status(404).json({ error: 'Query not found' });
+
+    const now = new Date().toISOString();
+    db.prepare("UPDATE audit_queries SET status = 'Resolved', updated_at = ? WHERE id = ?").run(now, req.params.qid);
+    res.json({ success: true, status: 'Resolved' });
+  } catch (err) {
+    console.error('Query resolve error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/audit/:id/queries/:qid/reopen
+router.patch('/:id/queries/:qid/reopen', (req, res) => {
+  try {
+    if (req.user.role !== 'auditor') {
+      return res.status(403).json({ error: 'Only auditors can reopen queries' });
+    }
+    const query = db.prepare('SELECT * FROM audit_queries WHERE id = ? AND engagement_id = ?').get(req.params.qid, req.params.id);
+    if (!query) return res.status(404).json({ error: 'Query not found' });
+
+    const now = new Date().toISOString();
+    db.prepare("UPDATE audit_queries SET status = 'Open', updated_at = ? WHERE id = ?").run(now, req.params.qid);
+    res.json({ success: true, status: 'Open' });
+  } catch (err) {
+    console.error('Query reopen error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/audit/:id/queries/:qid/replies/:rid/download
+router.get('/:id/queries/:qid/replies/:rid/download', (req, res) => {
+  try {
+    const reply = db.prepare('SELECT * FROM audit_query_replies WHERE id = ? AND query_id = ?').get(req.params.rid, req.params.qid);
+    if (!reply || !reply.stored_filename) return res.status(404).json({ error: 'Attachment not found' });
+
+    const filePath = path.join(VAULT_PATH, reply.stored_filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
+
+    const encrypted = fs.readFileSync(filePath);
+    const decrypted = decryptFile(encrypted);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${reply.original_filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', decrypted.length);
+    res.send(decrypted);
+  } catch (err) {
+    console.error('Reply download error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

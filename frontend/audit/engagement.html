@@ -23,6 +23,7 @@
       <a href="/audit/entries.html" data-page="entries">Entries</a>
       <a href="/audit/adjusted-tb.html" data-page="adjusted-tb">Adjusted TB</a>
       <a href="/audit/financials.html" data-page="financials">Financials</a>
+      <a href="/audit/queries.html" data-page="queries">Queries</a>
       <a href="/audit/report.html" data-page="report">Report</a>
     </nav>
 
@@ -47,6 +48,17 @@
         <div class="quick-actions" id="quick-actions">
           <!-- Quick action buttons populated by JS -->
         </div>
+        <div style="margin-top:28px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <h2 style="font-size:15px;font-weight:600;color:var(--text-primary);">Assigned Auditors</h2>
+            <button class="btn btn-secondary" id="btn-manage-auditors" style="padding:5px 12px;font-size:12px;">Manage</button>
+          </div>
+          <div id="auditors-container" style="display:flex;flex-wrap:wrap;gap:8px;min-height:32px;">
+            <span style="color:var(--text-secondary);font-size:13px;">Loading…</span>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;" id="open-queries-row"></div>
       </div>
     </div>
   </main>

@@ -72,10 +72,21 @@
         console.error('Failed to load entries count:', err);
       }
 
+      let openQueriesCount = 0;
+      try {
+        const qRes = await window.AE.apiFetch(`/api/audit/${engagementId}/queries`);
+        if (qRes.ok) {
+          const qs = await qRes.json();
+          openQueriesCount = qs.filter(q => q.status === 'Open').length;
+        }
+      } catch(e) { /* silent */ }
+
       renderHeader();
       renderPipeline();
       renderStats(pendingReviewCount);
       renderQuickActions();
+      renderOpenQueriesRow(openQueriesCount);
+      loadAndRenderAuditors();
     } catch (e) {
       console.error(e);
       showError('Network error loading engagement details.');
@@ -335,5 +346,116 @@
         </div>
       `;
     }
+  }
+
+  function renderOpenQueriesRow(count) {
+    const el = document.getElementById('open-queries-row');
+    if (!el) return;
+    if (count === 0) {
+      el.innerHTML = `<a href="/audit/queries.html?id=${engagementId}" style="font-size:13px;color:var(--text-secondary);text-decoration:none;">Queries — <span style="color:var(--status-verified);">No open queries</span> &rarr;</a>`;
+    } else {
+      el.innerHTML = `<a href="/audit/queries.html?id=${engagementId}" style="font-size:13px;font-weight:500;color:var(--status-action);text-decoration:none;">⚠ ${count} open ${count === 1 ? 'query' : 'queries'} — click to view &rarr;</a>`;
+    }
+  }
+
+  async function loadAndRenderAuditors() {
+    const container = document.getElementById('auditors-container');
+    const manageBtn = document.getElementById('btn-manage-auditors');
+    if (!container) return;
+
+    try {
+      const res = await window.AE.apiFetch(`/api/audit/engagements/${engagementId}/auditors`);
+      if (!res.ok) throw new Error();
+      const auditors = await res.json();
+
+      if (auditors.length === 0) {
+        container.innerHTML = '<span style="color:var(--text-muted);font-size:13px;font-style:italic;">No auditors assigned yet.</span>';
+      } else {
+        container.innerHTML = auditors.map(a => `
+          <div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg-raised);border:1px solid var(--border);border-radius:20px;padding:4px 12px;">
+            <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;">
+              ${window.AE.escapeHtml(a.name.slice(0,1).toUpperCase())}
+            </div>
+            <span style="font-size:13px;font-weight:500;color:var(--text-primary);">${window.AE.escapeHtml(a.name)}</span>
+          </div>
+        `).join('');
+      }
+    } catch(e) {
+      if (container) container.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Could not load auditors.</span>';
+    }
+
+    manageBtn?.addEventListener('click', () => openManageAuditorsModal());
+  }
+
+  async function openManageAuditorsModal() {
+    let modal = document.getElementById('manage-auditors-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'manage-auditors-modal';
+      modal.className = 'audit-modal';
+      document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="audit-modal-content" style="max-width:440px;width:95%;">
+        <h3 style="margin-bottom:4px;">Manage Auditors</h3>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Select auditors to assign to this engagement.</p>
+        <div id="manage-auditors-list" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+          <span style="color:var(--text-muted);font-size:13px;">Loading…</span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px;">
+          <button type="button" class="btn btn-ghost" id="btn-auditors-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-auditors-save">Save Changes</button>
+        </div>
+      </div>
+    `;
+
+    modal.querySelector('#btn-auditors-cancel').addEventListener('click', () => { modal.style.display = 'none'; });
+
+    try {
+      const [allRes, assignedRes] = await Promise.all([
+        window.AE.apiFetch('/api/users/auditors'),
+        window.AE.apiFetch(`/api/audit/engagements/${engagementId}/auditors`)
+      ]);
+      const all = allRes.ok ? await allRes.json() : [];
+      const assigned = assignedRes.ok ? await assignedRes.json() : [];
+      const assignedIds = new Set(assigned.map(a => a.user_id));
+
+      const listEl = document.getElementById('manage-auditors-list');
+      if (all.length === 0) {
+        listEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">No auditors in system.</span>';
+        return;
+      }
+      listEl.innerHTML = all.map(a => `
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border-radius:6px;background:var(--bg-raised);">
+          <input type="checkbox" name="manage_auditor" value="${a.id}" ${assignedIds.has(a.id) ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent);" />
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            ${window.AE.escapeHtml(a.name.slice(0,1).toUpperCase())}
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:500;color:var(--text-primary);">${window.AE.escapeHtml(a.name)}</div>
+            <div style="font-size:11px;color:var(--text-muted);">@${window.AE.escapeHtml(a.username)}</div>
+          </div>
+        </label>
+      `).join('');
+    } catch(e) {
+      const listEl = document.getElementById('manage-auditors-list');
+      if (listEl) listEl.innerHTML = '<span style="color:var(--status-action);font-size:13px;">Failed to load auditors.</span>';
+    }
+
+    modal.querySelector('#btn-auditors-save').addEventListener('click', async () => {
+      const checked = Array.from(modal.querySelectorAll('input[name="manage_auditor"]:checked'))
+        .map(el => parseInt(el.value, 10));
+      try {
+        await window.AE.apiFetch(`/api/audit/engagements/${engagementId}/auditors`, {
+          method: 'POST',
+          body: JSON.stringify({ user_ids: checked })
+        });
+        modal.style.display = 'none';
+        await loadAndRenderAuditors();
+      } catch(e) {
+        alert('Failed to save auditor assignments.');
+      }
+    });
   }
 })();
