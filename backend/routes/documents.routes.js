@@ -22,7 +22,9 @@ const upload = multer({
 const CATEGORIES = {
   'Indirect Tax': ['GST Returns', 'VAT Filings', 'Customs Duty', 'Service Tax', 'Excise'],
   'Employees': ['Payroll', 'PF/ESI', 'TDS on Salary', 'Leave Records', 'Contracts'],
-  'Income Tax': ['ITR Filing', 'Advance Tax', 'TDS Returns', 'Form 16', 'Tax Audit Report']
+  'Income Tax': ['ITR Filing', 'Advance Tax', 'TDS Returns', 'Form 16', 'Tax Audit Report'],
+  'Asset Management': ['Fixed Assets Register', 'Depreciation Schedules', 'Asset Purchase Invoices', 'Asset Disposal Records', 'Insurance Policies', 'Lease Agreements', 'Asset Valuation Reports'],
+  'Sales Management': ['Sales Invoices', 'Customer Contracts', 'Sales Returns', 'Debtors Ledger', 'Sales Tax Returns', 'Credit Notes', 'Sales Reports']
 };
 
 const VALID_STATUSES = ['Uploaded', 'Pending Approval', 'Action Required', 'Verified', 'Submitted', 'Overdue'];
