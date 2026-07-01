@@ -303,6 +303,17 @@ router.post('/:id/trial-balance/import', upload.single('file'), (req, res) => {
     }
 
     const insertMany = db.transaction((rows) => {
+      // Zero out existing balances for this engagement so that a re-import doesn't double-count.
+      // We don't delete the ledgers so we preserve their mappings and any foreign key links to audit entries.
+      db.prepare(`
+        UPDATE trial_balance_ledgers 
+        SET opening_balance = 0, 
+            debit_transactions = 0, 
+            credit_transactions = 0, 
+            closing_balance = 0 
+        WHERE engagement_id = ?
+      `).run(req.params.id);
+
       const stmt = db.prepare(`
         INSERT INTO trial_balance_ledgers 
           (engagement_id, ledger_code, ledger_name, opening_balance, 
@@ -312,9 +323,7 @@ router.post('/:id/trial-balance/import', upload.single('file'), (req, res) => {
           opening_balance     = opening_balance + excluded.opening_balance,
           debit_transactions  = debit_transactions + excluded.debit_transactions,
           credit_transactions = credit_transactions + excluded.credit_transactions,
-          closing_balance     = closing_balance + excluded.closing_balance,
-          is_mapped = 0,
-          sub_subgroup_id = NULL
+          closing_balance     = closing_balance + excluded.closing_balance
       `);
 
       let imported = 0;
